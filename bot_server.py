@@ -3,15 +3,12 @@ import asyncio
 import random
 import re
 from typing import Final
-from threading import Thread
-
-from flask import Flask
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
 from aiogram.client.default import DefaultBotProperties
 
 # Windows fix
@@ -30,15 +27,7 @@ bot = Bot(
     API_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
-
 dp = Dispatcher()
-
-# ---------------- FLASK ----------------
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot ishlayapti ✅"
 
 # ---------------- TRAFIK ----------------
 async def hit_url(url: str, hits: int, chat_id: int):
@@ -86,24 +75,28 @@ async def handle_link(msg: Message):
         url = "http://" + url
 
     hits = random.randint(110, 200)
-
     await msg.reply(f"🚀 {hits} ta request yuborilmoqda...")
-
     asyncio.create_task(hit_url(url, hits, msg.chat.id))
 
-# ---------------- RUN BOT ----------------
-async def start_bot():
-    await dp.start_polling(bot)
+# ---------------- AIOHTTP WEB SERVER ----------------
+async def handle_home(request):
+    return web.Response(text="Bot ishlayapti ✅")
 
-def run_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_bot())
+async def start_web_server():
+    web_app = web.Application()
+    web_app.router.add_get("/", handle_home)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("Web server started on port 8080")
 
 # ---------------- MAIN ----------------
-# Botni alohida threadda ishga tushuramiz (gunicorn ham, to'g'ridan-to'g'ri ham ishlaydi)
-bot_thread = Thread(target=run_bot, daemon=True)
-bot_thread.start()
+async def main():
+    # Web server va botni birgalikda main loop da ishlatamiz
+    await start_web_server()
+    print("Bot polling started...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    asyncio.run(main())
